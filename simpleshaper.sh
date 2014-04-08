@@ -31,11 +31,12 @@ echo "status:"
 tc -s qdisc show dev $1
 }
 
-# reset_shaper <dev>
-reset_shaper() {
-tc qdisc del dev $1 root
-iptables -t mangle -D POSTROUTING -o $1 -j SHAPER-UPLOAD
-iptables -t mangle -D PREROUTING -i $1 -j SHAPER-DOWNLOAD
+# stop_shaper 
+stop_shaper() {
+tc qdisc del dev $iface root
+iptables -t mangle -F SIMPLESHAPEROUT
+iptables -t mangle -D POSTROUTING -i $iface -o $oface -j SIMPLESHAPEROUT
+iptables -t mangle -X SIMPLESHAPEROUT
 }
 
 # shape_upload <dev>
@@ -57,11 +58,15 @@ tc filter add dev $1 parent 1:0 prio 0 protocol ip handle 20 fw flowid 1:20
 tc filter add dev $1 parent 1:0 prio 0 protocol ip handle 21 fw flowid 1:21
 tc filter add dev $1 parent 1:0 prio 0 protocol ip handle 22 fw flowid 1:22
 
-iptables -t mangle -A POSTROUTING -p tcp -m connbytes --connbytes 1048576 -j MARK --set-mark 22
-iptables -t mangle -A POSTROUTING -p tcp --dport 80 -j MARK --set-mark 20
-iptables -t mangle -A POSTROUTING -p tcp -m length --length :64 -j MARK --set-mark 20
-iptables -t mangle -A POSTROUTING -p udp -j MARK --set-mark 21
-iptables -t mangle -A POSTROUTING -p tcp ! --dport 80 -jMARK --set-mark 22
+# create shaper chain
+iptables -t mangle -N SIMPLESHAPEROUT
+iptables -t mangle -I POSTROUTING -i $iface -o $oface -j SIMPLESHAPEROUT
+
+iptables -t mangle -A SIMPLESHAPEROUT -p tcp -m connbytes --connbytes 1048576 -j MARK --set-mark 22
+iptables -t mangle -A SIMPLESHAPEROUT -p tcp --dport 80 -j MARK --set-mark 20
+iptables -t mangle -A SIMPLESHAPEROUT -p tcp -m length --length :64 -j MARK --set-mark 20
+iptables -t mangle -A SIMPLESHAPEROUT -p udp -j MARK --set-mark 21
+iptables -t mangle -A SIMPLESHAPEROUT -p tcp ! --dport 80 -jMARK --set-mark 22
 }
 
 if [ "$1" == "status" ] && [ ! -z "$2" ]
